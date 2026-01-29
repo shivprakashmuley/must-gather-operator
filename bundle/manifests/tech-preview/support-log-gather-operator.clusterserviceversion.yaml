@@ -187,6 +187,14 @@ spec:
           - patch
           - update
           - watch
+        - apiGroups:
+          - image.openshift.io
+          resources:
+          - imagestreams
+          verbs:
+          - get
+          - list
+          - watch
       deployments:
       - name: must-gather-operator
         spec:
