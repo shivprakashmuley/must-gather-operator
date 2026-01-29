@@ -23,6 +23,7 @@ import (
 	"os"
 
 	"github.com/go-logr/logr"
+	imagev1 "github.com/openshift/api/image/v1"
 	mustgatherv1alpha1 "github.com/openshift/must-gather-operator/api/v1alpha1"
 	"github.com/openshift/must-gather-operator/pkg/localmetrics"
 	"github.com/redhat-cop/operator-utils/pkg/util"
@@ -44,6 +45,15 @@ const (
 
 	// default namespace is always present
 	DefaultMustGatherNamespace = "default"
+
+	// OperatorNamespaceEnvVar is the constant for the OPERATOR_NAMESPACE env var
+	OperatorNamespaceEnvVar = "OPERATOR_NAMESPACE"
+
+	// DefaultOperatorNamespace is the default namespace for the operator
+	DefaultOperatorNamespace = "must-gather-operator"
+
+	// DefaultMustGatherImageEnv is the environment variable for the default must-gather image
+	DefaultMustGatherImageEnv = "DEFAULT_MUST_GATHER_IMAGE"
 )
 
 var log = logf.Log.WithName(ControllerName)
@@ -72,6 +82,7 @@ const mustGatherFinalizer = "finalizer.mustgathers.operator.openshift.io"
 //+kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;create
 //+kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;replicasets;statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments/finalizers,verbs=update
+//+kubebuilder:rbac:groups=image.openshift.io,resources=imagestreams,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=pods;services;services/finalizers;endpoints;persistentvolumeclaims;events;configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch
 // ServiceAccount read access needed for pre-flight validation before Job creation
@@ -147,7 +158,7 @@ func (r *MustGatherReconciler) Reconcile(ctx context.Context, request reconcile.
 		}
 	}
 
-	job, err := r.getJobFromInstance(instance)
+	job, err := r.getJobFromInstance(ctx, instance)
 	if err != nil {
 		log.Error(err, "unable to get job from", "instance", instance)
 		return r.ManageError(ctx, instance, err)
@@ -388,7 +399,13 @@ func (r *MustGatherReconciler) addFinalizer(ctx context.Context, reqLogger logr.
 	return nil
 }
 
-func (r *MustGatherReconciler) getJobFromInstance(instance *mustgatherv1alpha1.MustGather) (*batchv1.Job, error) {
+func (r *MustGatherReconciler) getJobFromInstance(ctx context.Context, instance *mustgatherv1alpha1.MustGather) (*batchv1.Job, error) {
+
+	image, err := r.getMustGatherImage(ctx, instance)
+	if err != nil {
+		return nil, err
+	}
+
 	// Inject the operator image URI from the pod's env variables
 	operatorImage, varPresent := os.LookupEnv("OPERATOR_IMAGE")
 	if !varPresent {
@@ -397,7 +414,58 @@ func (r *MustGatherReconciler) getJobFromInstance(instance *mustgatherv1alpha1.M
 		return nil, err
 	}
 
-	return getJobTemplate(operatorImage, *instance, r.TrustedCAConfigMap), nil
+	return getJobTemplate(image, operatorImage, *instance, r.TrustedCAConfigMap), nil
+}
+
+func (r *MustGatherReconciler) getMustGatherImage(ctx context.Context, instance *mustgatherv1alpha1.MustGather) (string, error) {
+	if instance.Spec.ImageStreamRef == nil {
+		// Use default image
+		mustGatherImage, varPresent := os.LookupEnv(DefaultMustGatherImageEnv)
+		if !varPresent {
+			return "", goerror.New("default must-gather image environment variable not found")
+		}
+		return mustGatherImage, nil
+	}
+
+	// Use custom image from ImageStream
+	operatorNs := getOperatorNamespace()
+	imageStream := &imagev1.ImageStream{}
+	err := r.GetClient().Get(ctx, types.NamespacedName{Name: instance.Spec.ImageStreamRef.Name, Namespace: operatorNs}, imageStream)
+	if err != nil {
+		return "", fmt.Errorf("failed to get imagestream %s in namespace %s: %w", instance.Spec.ImageStreamRef.Name, operatorNs, err)
+	}
+
+	var foundTag bool
+	var pullable bool
+	var image string
+	for _, tag := range imageStream.Status.Tags {
+		if tag.Tag == instance.Spec.ImageStreamRef.Tag {
+			foundTag = true
+			if len(tag.Items) > 0 && tag.Items[0].DockerImageReference != "" {
+				pullable = true
+				image = tag.Items[0].DockerImageReference
+			}
+			break
+		}
+	}
+
+	if !foundTag {
+		return "", fmt.Errorf("imagestream tag %s not found in imagestream %s", instance.Spec.ImageStreamRef.Tag, instance.Spec.ImageStreamRef.Name)
+	}
+
+	if !pullable {
+		return "", fmt.Errorf("imagestream tag %s in imagestream %s is not pullable", instance.Spec.ImageStreamRef.Tag, instance.Spec.ImageStreamRef.Name)
+	}
+
+	return image, nil
+}
+
+// getOperatorNamespace returns the namespace the operator is running in.
+func getOperatorNamespace() string {
+	if ns, ok := os.LookupEnv(OperatorNamespaceEnvVar); ok {
+		return ns
+	}
+	return DefaultOperatorNamespace
 }
 
 // contains is a helper function for finalizer

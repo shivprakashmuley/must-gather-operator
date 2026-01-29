@@ -306,6 +306,7 @@ func TestReconcile(t *testing.T) {
 			name: "reconcile_initialize_mustgather_update_succeeds",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
+				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns"}}
@@ -436,6 +437,7 @@ func TestReconcile(t *testing.T) {
 			name: "reconcile_job_not_found_no_upload_target_creates_job_successfully",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
+				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
@@ -456,6 +458,7 @@ func TestReconcile(t *testing.T) {
 			name: "reconcile_job_not_found_creates_job_successfully",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
+				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
@@ -692,6 +695,7 @@ func TestReconcile(t *testing.T) {
 			name: "reconcile_job_not_found_user_secret_get_error_returns_requeue",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
+				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
@@ -741,6 +745,7 @@ func TestReconcile(t *testing.T) {
 			name: "reconcile_job_active_updates_status_running",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
+				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
@@ -770,6 +775,7 @@ func TestReconcile(t *testing.T) {
 			name: "reconcile_job_succeeded_retain_resources_no_cleanup",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
+				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
@@ -849,6 +855,7 @@ func TestReconcile(t *testing.T) {
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_NAMESPACE", "bar")
 				t.Setenv("OPERATOR_IMAGE", "img")
+				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
@@ -1119,6 +1126,7 @@ func TestReconcile(t *testing.T) {
 			name: "reconcile_job_not_found_get_secret_returns_non_not_found_error",
 			setupEnv: func(t *testing.T) {
 				t.Setenv("OPERATOR_IMAGE", "img")
+				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
@@ -1239,6 +1247,7 @@ func TestMustGatherController(t *testing.T) {
 	secObj := createMustGatherSecretObject()
 	saObj := createServiceAccountObject()
 	t.Setenv("OPERATOR_IMAGE", "test-image")
+	t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 
 	objs := []runtime.Object{
 		mgObj,
@@ -1290,6 +1299,7 @@ func TestMustGatherControllerWithUploadTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("OPERATOR_IMAGE", "test-image")
+			t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			secObj := createMustGatherSecretObject()
 			saObj := createServiceAccountObject()
 			objs := []runtime.Object{tt.mustGather, secObj, saObj}
@@ -1313,7 +1323,7 @@ func TestMustGatherControllerWithUploadTarget(t *testing.T) {
 				t.Fatalf("reconcile: (%v)", err)
 			}
 
-			job, err := r.getJobFromInstance(tt.mustGather)
+			job, err := r.getJobFromInstance(context.TODO(), tt.mustGather)
 			if err != nil {
 				t.Fatalf("getJobFromInstance : (%v)", err)
 			}
