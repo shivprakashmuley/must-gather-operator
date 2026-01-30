@@ -1,0 +1,16 @@
+package mustgather
+
+// Constants defining the supported transfer protocols and validation types
+const (
+	// ProtocolSFTP represents the SFTP (SSH File Transfer Protocol)
+	ProtocolSFTP = "SFTP"
+
+	// ProtocolTCP represents the TCP protocol
+	ProtocolTCP = "tcp"
+
+	// ValidationSFTPCredentials represents the validation type for SFTP credentials
+	ValidationSFTPCredentials = "SFTP credentials"
+
+	// MaxSFTPValidationRetries is the maximum number of retries for transient SFTP validation errors
+	MaxSFTPValidationRetries = 3
+)
