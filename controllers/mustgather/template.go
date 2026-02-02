@@ -48,9 +48,6 @@ const (
 	// SSH directory and known hosts file
 	sshDir         = "/tmp/must-gather-operator/.ssh"
 	knownHostsFile = "/tmp/must-gather-operator/.ssh/known_hosts"
-
-	// Environment variable specifying the must-gather image
-	defaultMustGatherImageEnv = "DEFAULT_MUST_GATHER_IMAGE"
 )
 
 func getJobTemplate(image string, operatorImage string, mustGather v1alpha1.MustGather, trustedCAConfigMapName string) *batchv1.Job {

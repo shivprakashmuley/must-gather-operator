@@ -231,7 +231,11 @@ func TestCleanupMustGatherResources(t *testing.T) {
 			}
 
 			// Create reconciler
-			r := &MustGatherReconciler{ReconcilerBase: util.NewReconcilerBase(cl, s, &rest.Config{}, &record.FakeRecorder{}, nil)}
+			r := &MustGatherReconciler{
+				ReconcilerBase:         util.NewReconcilerBase(cl, s, &rest.Config{}, &record.FakeRecorder{}, nil),
+				DefaultMustGatherImage: "test-must-gather-image",
+				OperatorNamespace:      "foo-bar",
+			}
 
 			// Get the MustGather object for the test
 			var mg *mustgatherv1alpha1.MustGather
@@ -264,7 +268,6 @@ func TestReconcile(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		setupEnv       func(t *testing.T)
 		setupObjects   func() []client.Object
 		interceptors   func() interceptClient
 		expectError    bool
@@ -272,8 +275,7 @@ func TestReconcile(t *testing.T) {
 		postTestChecks func(t *testing.T, cl client.Client)
 	}{
 		{
-			name:     "reconcile_mustgather_not_found_returns_empty_result",
-			setupEnv: func(t *testing.T) {},
+			name: "reconcile_mustgather_not_found_returns_empty_result",
 			setupObjects: func() []client.Object {
 				return []client.Object{}
 			},
@@ -283,8 +285,7 @@ func TestReconcile(t *testing.T) {
 			postTestChecks: func(t *testing.T, cl client.Client) {},
 		},
 		{
-			name:     "reconcile_mustgather_get_error_returns_error",
-			setupEnv: func(t *testing.T) {},
+			name: "reconcile_mustgather_get_error_returns_error",
 			setupObjects: func() []client.Object {
 				return []client.Object{}
 			},
@@ -304,10 +305,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_initialize_mustgather_update_succeeds",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns"}}
 				sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "ns"}}
@@ -319,8 +316,7 @@ func TestReconcile(t *testing.T) {
 			postTestChecks: func(t *testing.T, cl client.Client) {},
 		},
 		{
-			name:     "reconcile_initialize_mustgather_update_fails",
-			setupEnv: func(t *testing.T) {},
+			name: "reconcile_initialize_mustgather_update_fails",
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns"}}
 				sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "ns"}}
@@ -342,8 +338,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_deletion_cleanup_and_finalizer_removal_success",
-			setupEnv: func(t *testing.T) {
-			},
 			setupObjects: func() []client.Object {
 				secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s", Namespace: operatorNs}}
 				mg := &mustgatherv1alpha1.MustGather{
@@ -378,8 +372,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_deletion_cleanup_resources_returns_error",
-			setupEnv: func(t *testing.T) {
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{
@@ -416,8 +408,7 @@ func TestReconcile(t *testing.T) {
 			postTestChecks: func(t *testing.T, cl client.Client) {},
 		},
 		{
-			name:     "reconcile_job_template_env_missing_returns_error",
-			setupEnv: func(t *testing.T) {},
+			name: "reconcile_job_template_env_missing_returns_error",
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -435,10 +426,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_not_found_no_upload_target_creates_job_successfully",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -456,10 +443,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_not_found_creates_job_successfully",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -650,9 +633,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_not_found_user_secret_not_found_calls_manage_error",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -693,10 +673,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_not_found_user_secret_get_error_returns_requeue",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -743,10 +719,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_active_updates_status_running",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -773,10 +745,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_succeeded_retain_resources_no_cleanup",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: operatorNs, Finalizers: []string{mustGatherFinalizer}},
@@ -808,9 +776,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_failed_cleanup_error_returns_error",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: operatorNs, Finalizers: []string{mustGatherFinalizer}},
@@ -852,11 +817,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_failed_retain_resources_no_cleanup",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_NAMESPACE", "bar")
-				t.Setenv("OPERATOR_IMAGE", "img")
-				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -891,9 +851,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_succeeded_status_update_fails",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: operatorNs, Finalizers: []string{mustGatherFinalizer}},
@@ -923,9 +880,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_failed_status_update_fails",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: operatorNs, Finalizers: []string{mustGatherFinalizer}},
@@ -954,8 +908,7 @@ func TestReconcile(t *testing.T) {
 			postTestChecks: func(t *testing.T, cl client.Client) {},
 		},
 		{
-			name:     "reconcile_deletion_finalizer_removal_update_fails",
-			setupEnv: func(t *testing.T) {},
+			name: "reconcile_deletion_finalizer_removal_update_fails",
 			setupObjects: func() []client.Object {
 				operatorNs := "must-gather-operator"
 				secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "secret", Namespace: operatorNs}}
@@ -998,8 +951,7 @@ func TestReconcile(t *testing.T) {
 			postTestChecks: func(t *testing.T, cl client.Client) {},
 		},
 		{
-			name:     "reconcile_add_finalizer_fails",
-			setupEnv: func(t *testing.T) {},
+			name: "reconcile_add_finalizer_fails",
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns"},
@@ -1029,9 +981,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_not_found_create_job_fails",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: operatorNs, Finalizers: []string{mustGatherFinalizer}},
@@ -1080,9 +1029,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_lookup_error_non_notfound",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -1124,10 +1070,6 @@ func TestReconcile(t *testing.T) {
 		},
 		{
 			name: "reconcile_job_not_found_get_secret_returns_non_not_found_error",
-			setupEnv: func(t *testing.T) {
-				t.Setenv("OPERATOR_IMAGE", "img")
-				t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
-			},
 			setupObjects: func() []client.Object {
 				mg := &mustgatherv1alpha1.MustGather{
 					ObjectMeta: metav1.ObjectMeta{Name: "example-mustgather", Namespace: "ns", Finalizers: []string{mustGatherFinalizer}},
@@ -1171,8 +1113,6 @@ func TestReconcile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup environment
-			tt.setupEnv(t)
 
 			// Setup scheme
 			s := runtime.NewScheme()
@@ -1204,7 +1144,11 @@ func TestReconcile(t *testing.T) {
 			}
 
 			// Create reconciler
-			r := &MustGatherReconciler{ReconcilerBase: util.NewReconcilerBase(cl, s, &rest.Config{}, &record.FakeRecorder{}, nil)}
+			r := &MustGatherReconciler{
+				ReconcilerBase:         util.NewReconcilerBase(cl, s, &rest.Config{}, &record.FakeRecorder{}, nil),
+				DefaultMustGatherImage: "test-must-gather-image",
+				OperatorNamespace:      operatorNs,
+			}
 
 			// Determine request based on test objects
 			var req reconcile.Request
@@ -1220,6 +1164,11 @@ func TestReconcile(t *testing.T) {
 			}
 
 			// Execute
+			if tt.name != "reconcile_job_template_env_missing_returns_error" {
+				t.Setenv("OPERATOR_IMAGE", "img")
+			}
+			t.Setenv(DefaultMustGatherImageEnv, "test-must-gather-image")
+			t.Setenv(OperatorNamespaceEnvVar, operatorNs)
 			res, err := r.Reconcile(context.TODO(), req)
 
 			// Assert error expectation
@@ -1247,7 +1196,8 @@ func TestMustGatherController(t *testing.T) {
 	secObj := createMustGatherSecretObject()
 	saObj := createServiceAccountObject()
 	t.Setenv("OPERATOR_IMAGE", "test-image")
-	t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
+	t.Setenv(DefaultMustGatherImageEnv, "test-must-gather-image")
+	t.Setenv(OperatorNamespaceEnvVar, "openshift-must-gather-operator")
 
 	objs := []runtime.Object{
 		mgObj,
@@ -1259,7 +1209,9 @@ func TestMustGatherController(t *testing.T) {
 	var cfg *rest.Config
 
 	r := MustGatherReconciler{
-		ReconcilerBase: util.NewReconcilerBase(cl, s, cfg, eventRec, nil),
+		ReconcilerBase:         util.NewReconcilerBase(cl, s, cfg, eventRec, nil),
+		DefaultMustGatherImage: "test-must-gather-image",
+		OperatorNamespace:      "openshift-must-gather-operator",
 	}
 
 	req := reconcile.Request{
@@ -1298,40 +1250,37 @@ func TestMustGatherControllerWithUploadTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(DefaultMustGatherImageEnv, "test-must-gather-image")
+			t.Setenv(OperatorNamespaceEnvVar, tt.mustGather.Namespace)
 			t.Setenv("OPERATOR_IMAGE", "test-image")
-			t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "default-img")
 			secObj := createMustGatherSecretObject()
 			saObj := createServiceAccountObject()
 			objs := []runtime.Object{tt.mustGather, secObj, saObj}
 			cl, s := generateFakeClient(objs...)
 			eventRec := &record.FakeRecorder{}
 			var cfg *rest.Config
-
 			r := MustGatherReconciler{
-				ReconcilerBase: util.NewReconcilerBase(cl, s, cfg, eventRec, nil),
+				ReconcilerBase:         util.NewReconcilerBase(cl, s, cfg, eventRec, nil),
+				DefaultMustGatherImage: "test-must-gather-image",
+				OperatorNamespace:      tt.mustGather.Namespace,
 			}
-
 			req := reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      tt.mustGather.Name,
 					Namespace: tt.mustGather.Namespace,
 				},
 			}
-
 			_, err := r.Reconcile(context.TODO(), req)
 			if err != nil {
 				t.Fatalf("reconcile: (%v)", err)
 			}
-
 			job, err := r.getJobFromInstance(context.TODO(), tt.mustGather)
 			if err != nil {
 				t.Fatalf("getJobFromInstance : (%v)", err)
 			}
-
 			if len(job.Spec.Template.Spec.Containers) != tt.expectedContainers {
 				t.Errorf("expected %d containers, got %d", tt.expectedContainers, len(job.Spec.Template.Spec.Containers))
 			}
-
 			hasUploadContainer := false
 			for _, container := range job.Spec.Template.Spec.Containers {
 				if container.Name == "upload" {
@@ -1339,7 +1288,6 @@ func TestMustGatherControllerWithUploadTarget(t *testing.T) {
 					break
 				}
 			}
-
 			if hasUploadContainer != tt.expectUploadContainer {
 				t.Errorf("expected upload container to be %v, but it was %v", tt.expectUploadContainer, hasUploadContainer)
 			}

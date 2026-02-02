@@ -152,10 +152,18 @@ func main() {
 		operatorNamespace = mustgather.DefaultMustGatherNamespace
 	}
 
+	// Get default must-gather image from environment
+	defaultMustGatherImage, varPresent := os.LookupEnv(mustgather.DefaultMustGatherImageEnv)
+	if !varPresent {
+		setupLog.Error(fmt.Errorf("environment variable %s not found", mustgather.DefaultMustGatherImageEnv), "unable to start manager")
+		os.Exit(1)
+	}
+
 	if err = (&mustgather.MustGatherReconciler{
-		ReconcilerBase:     util.NewReconcilerBase(mgr.GetClient(), mgr.GetScheme(), mgr.GetConfig(), mgr.GetEventRecorderFor("must-gather-controller"), mgr.GetAPIReader()),
-		TrustedCAConfigMap: trustedCAConfigMapName,
-		OperatorNamespace:  operatorNamespace,
+		ReconcilerBase:         util.NewReconcilerBase(mgr.GetClient(), mgr.GetScheme(), mgr.GetConfig(), mgr.GetEventRecorderFor("must-gather-controller"), mgr.GetAPIReader()),
+		TrustedCAConfigMap:     trustedCAConfigMapName,
+		OperatorNamespace:      operatorNamespace,
+		DefaultMustGatherImage: defaultMustGatherImage,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MustGather")
 		os.Exit(1)

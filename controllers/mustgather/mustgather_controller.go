@@ -70,6 +70,8 @@ type MustGatherReconciler struct {
 	TrustedCAConfigMap string
 	// OperatorNamespace is the namespace where the operator is running
 	OperatorNamespace string
+	// DefaultMustGatherImage is the default must-gather image
+	DefaultMustGatherImage string
 }
 
 const mustGatherFinalizer = "finalizer.mustgathers.operator.openshift.io"
@@ -420,19 +422,13 @@ func (r *MustGatherReconciler) getJobFromInstance(ctx context.Context, instance 
 func (r *MustGatherReconciler) getMustGatherImage(ctx context.Context, instance *mustgatherv1alpha1.MustGather) (string, error) {
 	if instance.Spec.ImageStreamRef == nil {
 		// Use default image
-		mustGatherImage, varPresent := os.LookupEnv(DefaultMustGatherImageEnv)
-		if !varPresent {
-			return "", goerror.New("default must-gather image environment variable not found")
-		}
-		return mustGatherImage, nil
+		return r.DefaultMustGatherImage, nil
 	}
 
 	// Use custom image from ImageStream
-	operatorNs := getOperatorNamespace()
 	imageStream := &imagev1.ImageStream{}
-	err := r.GetClient().Get(ctx, types.NamespacedName{Name: instance.Spec.ImageStreamRef.Name, Namespace: operatorNs}, imageStream)
-	if err != nil {
-		return "", fmt.Errorf("failed to get imagestream %s in namespace %s: %w", instance.Spec.ImageStreamRef.Name, operatorNs, err)
+	if err := r.GetClient().Get(context.TODO(), types.NamespacedName{Name: instance.Spec.ImageStreamRef.Name, Namespace: r.OperatorNamespace}, imageStream); err != nil {
+		return "", fmt.Errorf("failed to get imagestream %s in namespace %s: %w", instance.Spec.ImageStreamRef.Name, r.OperatorNamespace, err)
 	}
 
 	var foundTag bool
@@ -458,14 +454,6 @@ func (r *MustGatherReconciler) getMustGatherImage(ctx context.Context, instance 
 	}
 
 	return image, nil
-}
-
-// getOperatorNamespace returns the namespace the operator is running in.
-func getOperatorNamespace() string {
-	if ns, ok := os.LookupEnv(OperatorNamespaceEnvVar); ok {
-		return ns
-	}
-	return DefaultOperatorNamespace
 }
 
 // contains is a helper function for finalizer
