@@ -26,6 +26,7 @@ import (
 	mustgatherv1alpha1 "github.com/openshift/must-gather-operator/api/v1alpha1"
 	"github.com/openshift/must-gather-operator/pkg/localmetrics"
 	"github.com/redhat-cop/operator-utils/pkg/util"
+	"github.com/redhat-cop/operator-utils/pkg/util/apis"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -178,12 +179,44 @@ func (r *MustGatherReconciler) Reconcile(ctx context.Context, request reconcile.
 			}, userSecret)
 			if err != nil {
 				if errors.IsNotFound(err) {
-					log.Error(err, fmt.Sprintf("The secret %s was not found in namespace %s: Error: %s", secretName, instance.Namespace, err.Error()))
+					log.Error(err, "secret not found", "secret", secretName, "namespace", instance.Namespace)
 					return r.ManageError(ctx, instance, fmt.Errorf("secret %s not found in namespace %s: Please create the secret referenced by caseManagementAccountSecretRef", secretName, instance.Namespace))
 				}
-				log.Error(err, fmt.Sprintf("Error getting secret (%s): %s", secretName, err.Error()))
+				log.Error(err, "error getting secret", "secret", secretName)
 				return reconcile.Result{Requeue: true}, err
 			}
+
+			// Validate and extract required credentials
+			username, usernameExists := userSecret.Data["username"]
+			password, passwordExists := userSecret.Data["password"]
+
+			if !usernameExists || len(username) == 0 {
+				validationErr := fmt.Errorf("sftp credentials secret %q is missing required field 'username'", secretName)
+				reqLogger.Error(validationErr, "sftp credential validation failed")
+				return r.setValidationFailureStatus(ctx, reqLogger, instance, ValidationSFTPCredentials, validationErr)
+			}
+
+			if !passwordExists || len(password) == 0 {
+				validationErr := fmt.Errorf("sftp credentials secret %q is missing required field 'password'", secretName)
+				reqLogger.Error(validationErr, "sftp credential validation failed")
+				return r.setValidationFailureStatus(ctx, reqLogger, instance, ValidationSFTPCredentials, validationErr)
+			}
+
+			// Validate SFTP credentials before creating the job
+			reqLogger.Info("Validating SFTP credentials before creating must-gather job")
+			validationErr := validateSFTPWithRetry(
+				ctx,
+				reqLogger,
+				string(username),
+				string(password),
+				instance.Spec.UploadTarget.SFTP.Host,
+			)
+			if validationErr != nil {
+				reqLogger.Error(validationErr, "SFTP credential validation failed")
+				return r.setValidationFailureStatus(ctx, reqLogger, instance, ProtocolSFTP, validationErr)
+			}
+
+			reqLogger.Info("SFTP credentials validated successfully")
 		}
 
 		// job is not there, create it.
@@ -267,6 +300,44 @@ func (r *MustGatherReconciler) updateStatus(ctx context.Context, instance *mustg
 	instance.Status.Completed = !job.Status.CompletionTime.IsZero()
 
 	return r.ManageSuccess(ctx, instance)
+}
+
+// setValidationFailureStatus updates the MustGather status to indicate a validation failure.
+// It sets the status to Failed, marks it as completed, updates the reason with the validation type, and sets the timestamp.
+// validationType should describe what kind of validation failed (e.g., "SFTP", "Service Account", "Secret").
+func (r *MustGatherReconciler) setValidationFailureStatus(
+	ctx context.Context,
+	reqLogger logr.Logger,
+	instance *mustgatherv1alpha1.MustGather,
+	validationType string,
+	validationErr error,
+) (reconcile.Result, error) {
+	errorMessage := fmt.Sprintf("%s validation failed: %v", validationType, validationErr)
+
+	instance.Status.Status = "Failed"
+	instance.Status.Completed = true
+	instance.Status.Reason = errorMessage
+	instance.Status.LastUpdate = metav1.Now()
+
+	// Set condition using the same pattern as ManageError
+	condition := metav1.Condition{
+		Type:               "ReconcileError",
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: instance.GetGeneration(),
+		Message:            errorMessage,
+		Reason:             "ValidationFailed",
+		Status:             metav1.ConditionTrue,
+	}
+	instance.SetConditions(apis.AddOrReplaceCondition(condition, instance.GetConditions()))
+
+	// Record a warning event for the validation failure
+	r.GetRecorder().Event(instance, "Warning", "ProcessingError", errorMessage)
+
+	if statusErr := r.GetClient().Status().Update(ctx, instance); statusErr != nil {
+		reqLogger.Error(statusErr, "failed to update status after validation error")
+		return r.ManageError(ctx, instance, statusErr)
+	}
+	return reconcile.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
