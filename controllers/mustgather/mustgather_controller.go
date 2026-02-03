@@ -45,15 +45,6 @@ const (
 
 	// default namespace is always present
 	DefaultMustGatherNamespace = "default"
-
-	// OperatorNamespaceEnvVar is the constant for the OPERATOR_NAMESPACE env var
-	OperatorNamespaceEnvVar = "OPERATOR_NAMESPACE"
-
-	// DefaultOperatorNamespace is the default namespace for the operator
-	DefaultOperatorNamespace = "must-gather-operator"
-
-	// DefaultMustGatherImageEnv is the environment variable for the default must-gather image
-	DefaultMustGatherImageEnv = "DEFAULT_MUST_GATHER_IMAGE"
 )
 
 var log = logf.Log.WithName(ControllerName)
@@ -405,6 +396,10 @@ func (r *MustGatherReconciler) getJobFromInstance(ctx context.Context, instance 
 
 	image, err := r.getMustGatherImage(ctx, instance)
 	if err != nil {
+		_, validationErr := r.setValidationFailureStatus(ctx, log, instance, ValidationImageStream, err)
+		if validationErr != nil {
+			return nil, fmt.Errorf("failed to set validation failure status: %w, %w", err, validationErr)
+		}
 		return nil, err
 	}
 
