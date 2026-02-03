@@ -427,7 +427,7 @@ func (r *MustGatherReconciler) getMustGatherImage(ctx context.Context, instance 
 
 	// Use custom image from ImageStream
 	imageStream := &imagev1.ImageStream{}
-	if err := r.GetClient().Get(context.TODO(), types.NamespacedName{Name: instance.Spec.ImageStreamRef.Name, Namespace: r.OperatorNamespace}, imageStream); err != nil {
+	if err := r.GetClient().Get(ctx, types.NamespacedName{Name: instance.Spec.ImageStreamRef.Name, Namespace: r.OperatorNamespace}, imageStream); err != nil {
 		return "", fmt.Errorf("failed to get imagestream %s in namespace %s: %w", instance.Spec.ImageStreamRef.Name, r.OperatorNamespace, err)
 	}
 
