@@ -47,9 +47,8 @@ spec:
                   args:
                     description: |-
                       Args is a string array of arguments passed to the custom image's command.
-                      Each string in the slice is limited to a maximum length of 256 characters by API validation.
+                      This field is only honored when a custom image IS specified via imageStreamRef.
                     items:
-                      maxLength: 256
                       type: string
                     maxItems: 256
                     type: array
@@ -62,9 +61,8 @@ spec:
                   command:
                     description: |-
                       Command is a string array representing the entrypoint for the custom image.
-                      Each string in the slice is limited to a maximum length of 256 characters by API validation.
+                      This field is only honored when a custom image IS specified via imageStreamRef.
                     items:
-                      maxLength: 256
                       type: string
                     maxItems: 256
                     type: array

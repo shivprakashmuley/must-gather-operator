@@ -74,20 +74,16 @@ type GatherSpec struct {
 	// or any custom image designed to do so.
 	Audit bool `json:"audit,omitempty"`
 
-	// --- Fields for a CUSTOM must-gather image ONLY ---
-	// These fields are only honored when a custom image IS specified via imageStreamRef.
-	// If they are set for a default must-gather run, the request will be rejected.
-
 	// +kubebuilder:validation:Optional
 	// Command is a string array representing the entrypoint for the custom image.
-	// Each string in the slice is limited to a maximum length of 256 characters by API validation.
+	// This field is only honored when a custom image IS specified via imageStreamRef.
 	// +kubebuilder:validation:MaxItems=256
 	// +kubebuilder:validation:Items:MaxLength=256
 	Command []string `json:"command,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	// Args is a string array of arguments passed to the custom image's command.
-	// Each string in the slice is limited to a maximum length of 256 characters by API validation.
+	// This field is only honored when a custom image IS specified via imageStreamRef.
 	// +kubebuilder:validation:MaxItems=256
 	// +kubebuilder:validation:Items:MaxLength=256
 	Args []string `json:"args,omitempty"`
