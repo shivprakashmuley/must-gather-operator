@@ -5,7 +5,6 @@ import (
 	"math"
 	"strconv"
 
-	//"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"

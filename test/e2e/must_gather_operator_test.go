@@ -1237,7 +1237,7 @@ var _ = ginkgo.Describe("MustGather resource", ginkgo.Ordered, func() {
 		})
 	})
 
-	ginkgo.Context("Custom Image (ImageStreamRef) Tests", func() {
+	ginkgo.Context("Custom Image", func() {
 		var mustGatherName string
 		var mustGatherCR *mustgatherv1alpha1.MustGather
 		var imageStreamName string

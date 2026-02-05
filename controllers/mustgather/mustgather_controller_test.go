@@ -1167,7 +1167,7 @@ func TestReconcile(t *testing.T) {
 			if tt.name != "reconcile_job_template_env_missing_returns_error" {
 				t.Setenv("OPERATOR_IMAGE", "img")
 			}
-			t.Setenv(DefaultMustGatherImageEnv, "test-must-gather-image")
+			t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "test-must-gather-image")
 			t.Setenv("OPERATOR_NAMESPACE", operatorNs)
 			res, err := r.Reconcile(context.TODO(), req)
 
@@ -1196,7 +1196,7 @@ func TestMustGatherController(t *testing.T) {
 	secObj := createMustGatherSecretObject()
 	saObj := createServiceAccountObject()
 	t.Setenv("OPERATOR_IMAGE", "test-image")
-	t.Setenv(DefaultMustGatherImageEnv, "test-must-gather-image")
+	t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "test-must-gather-image")
 	t.Setenv("OPERATOR_NAMESPACE", "openshift-must-gather-operator")
 
 	objs := []runtime.Object{
@@ -1250,7 +1250,7 @@ func TestMustGatherControllerWithUploadTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv(DefaultMustGatherImageEnv, "test-must-gather-image")
+			t.Setenv("DEFAULT_MUST_GATHER_IMAGE", "test-must-gather-image")
 			t.Setenv("OPERATOR_NAMESPACE", tt.mustGather.Namespace)
 			t.Setenv("OPERATOR_IMAGE", "test-image")
 			secObj := createMustGatherSecretObject()
