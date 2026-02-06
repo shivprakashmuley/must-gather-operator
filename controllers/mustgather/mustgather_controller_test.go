@@ -269,6 +269,7 @@ func TestReconcile(t *testing.T) {
 	tests := []struct {
 		name           string
 		setupObjects   func() []client.Object
+		setupEnv       func(t *testing.T)
 		interceptors   func() interceptClient
 		expectError    bool
 		expectResult   reconcile.Result
@@ -1161,6 +1162,10 @@ func TestReconcile(t *testing.T) {
 			// Default request if no MustGather object found
 			if req.Name == "" {
 				req = reconcile.Request{NamespacedName: types.NamespacedName{Name: "x", Namespace: "y"}}
+			}
+
+			if tt.setupEnv != nil {
+				tt.setupEnv(t)
 			}
 
 			// Execute
