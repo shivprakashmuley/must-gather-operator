@@ -26,10 +26,10 @@ import (
 	mustgatherv1alpha1 "github.com/openshift/must-gather-operator/api/v1alpha1"
 	"github.com/openshift/must-gather-operator/pkg/localmetrics"
 	"github.com/redhat-cop/operator-utils/pkg/util"
-	"github.com/redhat-cop/operator-utils/pkg/util/apis"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,6 +73,8 @@ const mustGatherFinalizer = "finalizer.mustgathers.operator.openshift.io"
 //+kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;replicasets;statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods;services;services/finalizers;endpoints;persistentvolumeclaims;events;configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch
+// ServiceAccount read access needed for pre-flight validation before Job creation
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -134,9 +136,7 @@ func (r *MustGatherReconciler) Reconcile(ctx context.Context, request reconcile.
 
 	// Add finalizer for this CR
 	if !contains(instance.GetFinalizers(), mustGatherFinalizer) {
-		if err := r.addFinalizer(ctx, reqLogger, instance); err != nil {
-			return reconcile.Result{}, err
-		}
+		return reconcile.Result{}, r.addFinalizer(ctx, reqLogger, instance)
 	}
 
 	// perform CA config map copy, iff set in caller
@@ -167,6 +167,30 @@ func (r *MustGatherReconciler) Reconcile(ctx context.Context, request reconcile.
 				Namespace: job.GetNamespace(),
 			})
 			return r.ManageError(ctx, instance, err)
+		}
+
+		// Validate that the ServiceAccount exists before creating the Job.
+		// This prevents the Job from being stuck in pending state due to a missing ServiceAccount.
+		// If no ServiceAccount is specified, default to "default" which should exist in all namespaces.
+		// Note: If the "default" SA has been deleted, this validation will catch it and report an error.
+		saName := instance.Spec.ServiceAccountName
+		if saName == "" {
+			saName = "default"
+			log.Info("no serviceAccountName specified, defaulting to 'default'", "namespace", instance.Namespace)
+		}
+		serviceAccount := &corev1.ServiceAccount{}
+		err = r.GetClient().Get(ctx, types.NamespacedName{
+			Namespace: instance.Namespace,
+			Name:      saName,
+		}, serviceAccount)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				log.Error(err, "service account not found", "name", saName, "namespace", instance.Namespace)
+				return r.setValidationFailureStatus(ctx, reqLogger, instance, ValidationServiceAccount, err)
+			}
+
+			log.Error(err, "failed to get service account (transient error, will retry)", "name", saName, "namespace", instance.Namespace)
+			return reconcile.Result{Requeue: true}, err
 		}
 
 		// look up user secret
@@ -319,16 +343,13 @@ func (r *MustGatherReconciler) setValidationFailureStatus(
 	instance.Status.Reason = errorMessage
 	instance.Status.LastUpdate = metav1.Now()
 
-	// Set condition using the same pattern as ManageError
-	condition := metav1.Condition{
+	apimeta.SetStatusCondition(&instance.Status.Conditions, metav1.Condition{
 		Type:               "ReconcileError",
-		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: instance.GetGeneration(),
-		Message:            errorMessage,
-		Reason:             "ValidationFailed",
 		Status:             metav1.ConditionTrue,
-	}
-	instance.SetConditions(apis.AddOrReplaceCondition(condition, instance.GetConditions()))
+		Reason:             "ValidationFailed",
+		Message:            errorMessage,
+		ObservedGeneration: instance.GetGeneration(),
+	})
 
 	// Record a warning event for the validation failure
 	r.GetRecorder().Event(instance, "Warning", "ProcessingError", errorMessage)

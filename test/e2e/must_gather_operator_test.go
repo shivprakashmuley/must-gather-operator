@@ -692,30 +692,63 @@ var _ = ginkgo.Describe("MustGather resource", ginkgo.Ordered, func() {
 			}
 		})
 
-		ginkgo.It("should fail when non-admin user tries to use privileged ServiceAccount", func() {
-			mustGatherName := fmt.Sprintf("test-privileged-sa-%d", time.Now().UnixNano())
+		ginkgo.It("should report error when ServiceAccount does not exist", func() {
+			mustGatherName := fmt.Sprintf("test-missing-sa-%d", time.Now().UnixNano())
 
-			ginkgo.By("Attempting to create MustGather with non-existent privileged SA")
-			mg = createMustGatherCR(mustGatherName, ns.Name, "cluster-admin-sa", false, nil) // SA doesn't exist
+			ginkgo.By("Creating MustGather with non-existent ServiceAccount")
+			mg = createMustGatherCR(mustGatherName, ns.Name, "non-existent-sa-e2e", false, nil)
 
-			ginkgo.By("Verifying Job is created but Pod fails due to missing SA")
+			ginkgo.By("Verifying MustGather status has error condition")
+			Eventually(func() bool {
+				fetchedMG := &mustgatherv1alpha1.MustGather{}
+				err := adminClient.Get(testCtx, client.ObjectKey{
+					Name:      mustGatherName,
+					Namespace: ns.Name,
+				}, fetchedMG)
+				if err != nil {
+					return false
+				}
+				// Check for error condition with service account message
+				for _, cond := range fetchedMG.Status.Conditions {
+					if cond.Type == "ReconcileError" && cond.Status == metav1.ConditionTrue {
+						if strings.Contains(strings.ToLower(cond.Message), "service account") &&
+							strings.Contains(strings.ToLower(cond.Message), "not found") {
+							ginkgo.GinkgoWriter.Printf("Found expected error condition: %s\n", cond.Message)
+							return true
+						}
+					}
+				}
+				return false
+			}).WithTimeout(1*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
+				"MustGather status should contain error condition about missing ServiceAccount")
+
+			ginkgo.By("Verifying Job was not created")
 			job := &batchv1.Job{}
-			Eventually(func() error {
-				return nonAdminClient.Get(testCtx, client.ObjectKey{
-					Name:      mustGatherName,
-					Namespace: ns.Name,
-				}, job)
-			}).WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).Should(Succeed())
+			err := adminClient.Get(testCtx, client.ObjectKey{
+				Name:      mustGatherName,
+				Namespace: ns.Name,
+			}, job)
+			Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+				"Job should not be created when ServiceAccount is missing")
 
-			// Job should exist but pods won't be created due to missing SA
-			Consistently(func() int32 {
-				_ = nonAdminClient.Get(testCtx, client.ObjectKey{
-					Name:      mustGatherName,
-					Namespace: ns.Name,
-				}, job)
-				return job.Status.Active
-			}).WithTimeout(30*time.Second).WithPolling(5*time.Second).Should(Equal(int32(0)),
-				"Job should not have active pods due to missing ServiceAccount")
+			ginkgo.By("Verifying warning event was generated")
+			events := &corev1.EventList{}
+			err = adminClient.List(testCtx, events, client.InNamespace(ns.Name))
+			Expect(err).NotTo(HaveOccurred())
+
+			foundWarningEvent := false
+			for _, event := range events.Items {
+				if event.InvolvedObject.Name == mustGatherName &&
+					event.Type == corev1.EventTypeWarning &&
+					strings.Contains(strings.ToLower(event.Message), "service account") {
+					foundWarningEvent = true
+					ginkgo.GinkgoWriter.Printf("Found warning event: %s\n", event.Message)
+					break
+				}
+			}
+			Expect(foundWarningEvent).To(BeTrue(), "Warning event should be generated for missing ServiceAccount")
+
+			ginkgo.GinkgoWriter.Println("ServiceAccount validation correctly prevented Job creation and reported error")
 		})
 
 		ginkgo.It("should enforce ServiceAccount permissions during data collection", func() {
@@ -1239,6 +1272,17 @@ var _ = ginkgo.Describe("MustGather resource", ginkgo.Ordered, func() {
 
 			ginkgo.By("Cleaning up PVC")
 			loader.DeleteFromFile(testassets.ReadFile, filepath.Join("testdata", "must-gather-pvc.yaml"), ns.Name)
+
+			ginkgo.By("Waiting for PVC to be fully deleted")
+			Eventually(func() bool {
+				pvc := &corev1.PersistentVolumeClaim{}
+				err := nonAdminClient.Get(testCtx, client.ObjectKey{
+					Name:      mustGatherPVCName,
+					Namespace: ns.Name,
+				}, pvc)
+				return apierrors.IsNotFound(err)
+			}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
+				"PVC should be fully deleted before next test runs")
 		})
 
 		ginkgo.It("should configure subPath correctly when specified", func() {

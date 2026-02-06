@@ -2,6 +2,9 @@ package mustgather
 
 // Constants defining the supported transfer protocols and validation types
 const (
+	// ValidationServiceAccount represents the validation type for Service account
+	ValidationServiceAccount = "Service Account"
+  
 	// ProtocolSFTP represents the SFTP (SSH File Transfer Protocol)
 	ProtocolSFTP = "SFTP"
 
